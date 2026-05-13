@@ -1,26 +1,42 @@
-use std::{env::{self}};
-use std::{fs::{self}};
-use serde_json::{Value, json};
-fn main(){
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 3{
-        eprint!("there cant be more then 3 args -- name discription")
-    }
-    let _name: &String = &args[1];
-    add_journal(_name);
+use std::env;
+use std::fs;
+use std::time::SystemTime;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use chrono;
+#[derive(Serialize, Deserialize, Debug)]
+struct Entry {
+    name: String,
+    description: String,
+    time: String,
 }
 
-fn add_journal(name: &str){
-    let mut journal: Vec<String> = std::fs::read_to_string("journal.json")
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        eprintln!("Usage: cargo run <name> <description>");
+        return;
+    }
+    let path_to_json = "journal.json";
+    let name = &args[1];
+    let description = &args[2];
+    add_journal(name, description, path_to_json);
+}
+
+fn add_journal(name: &str, description: &str, path_to_json: &str) {
+    let mut journal: Vec<Entry> = fs::read_to_string(path_to_json)
         .ok()
-        .and_then(|content| serde_json::from_str(&content).ok())
-        .unwrap_or_default(); 
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
 
-    journal.push(name.to_string());
+    journal.push(Entry {
+        name: name.to_string(),
+        description: description.to_string(),
+        time: chrono::Local::now().to_string(),
+    });
 
-    let updated_content = serde_json::to_string_pretty(&journal)
-        .expect("failed to idk");
-    
-    fs::write("journal.json", updated_content)
-        .expect("failed to write");
+    let updated = serde_json::to_string_pretty(&journal).unwrap();
+    fs::write(path_to_json, updated).unwrap();
+
+    println!("Added name: '{}', description: '{}'. New journal: {:#?}", name, description, journal);
 }

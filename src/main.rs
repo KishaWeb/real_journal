@@ -13,18 +13,22 @@ struct Entry {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let path_to_json = "journal.json";
-
     match args.get(1).map(|s| s.as_str()) {
         Some("list") => print_list(path_to_json),
-        Some(_) if args.len() == 3 => {
-            let name = &args[1];
-            let description = &args[2];
+        Some("show") if args.len() == 3 => {
+            let name = &args[2];
+            read_specific_journal(name, path_to_json);
+        }
+        Some("add") if args.len() == 4 => {
+            let name = &args[2];
+            let description = &args[3];
             add_journal(name, description, path_to_json);
         }
         _ => {
             eprintln!("Usage:");
-            eprintln!("  Add:  cargo run <name> <description>");
-            eprintln!("  List: cargo run list");
+            eprintln!("  Add:   cargo run add <name> <description>");
+            eprintln!("  List:  cargo run list");
+            eprintln!("  Show:  cargo run show <name>");
         }
     }
 }
@@ -60,4 +64,24 @@ fn print_list(path_to_json: &str) {
             println!("{}", entry.name);
         }
     }
+}
+
+fn read_specific_journal(name: &str, path_to_json: &str){
+    let journal: Vec<Entry> = fs::read_to_string(path_to_json)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+
+    let found: Vec<&Entry> = journal.iter().filter(|e| e.name == name).collect();
+    
+    if found.is_empty(){
+        println!("cant find the journal");
+    }else {
+        for entry in found {
+            println!("name: {}", entry.name);
+            println!("description: {}", entry.description);
+            println!("time: {}", entry.time);
+        }
+    }
+
 }

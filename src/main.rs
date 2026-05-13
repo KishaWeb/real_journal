@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::iter;
 use serde::{Deserialize, Serialize};
 use chrono::Local;
 
@@ -60,8 +61,8 @@ fn print_list(path_to_json: &str) {
     if journal.is_empty() {
         println!("No entries yet.");
     } else {
-        for entry in &journal {
-            println!("{}", entry.name);
+        for (index ,entry) in journal.iter().enumerate() {
+            println!("{}) {}",index + 1, entry.name);
         }
     }
 }

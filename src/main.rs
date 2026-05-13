@@ -1,9 +1,8 @@
 use std::env;
 use std::fs;
-use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use chrono;
+use chrono::Local;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Entry {
     name: String,
@@ -13,14 +12,21 @@ struct Entry {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: cargo run <name> <description>");
-        return;
-    }
     let path_to_json = "journal.json";
-    let name = &args[1];
-    let description = &args[2];
-    add_journal(name, description, path_to_json);
+
+    match args.get(1).map(|s| s.as_str()) {
+        Some("list") => print_list(path_to_json),
+        Some(_) if args.len() == 3 => {
+            let name = &args[1];
+            let description = &args[2];
+            add_journal(name, description, path_to_json);
+        }
+        _ => {
+            eprintln!("Usage:");
+            eprintln!("  Add:  cargo run <name> <description>");
+            eprintln!("  List: cargo run list");
+        }
+    }
 }
 
 fn add_journal(name: &str, description: &str, path_to_json: &str) {
@@ -32,11 +38,26 @@ fn add_journal(name: &str, description: &str, path_to_json: &str) {
     journal.push(Entry {
         name: name.to_string(),
         description: description.to_string(),
-        time: chrono::Local::now().to_string(),
+        time: Local::now().to_string(),
     });
 
     let updated = serde_json::to_string_pretty(&journal).unwrap();
     fs::write(path_to_json, updated).unwrap();
 
-    println!("Added name: '{}', description: '{}'. New journal: {:#?}", name, description, journal);
+    println!("Added name: '{}', description: '{}'.", name, description);
+}
+
+fn print_list(path_to_json: &str) {
+    let journal: Vec<Entry> = fs::read_to_string(path_to_json)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+
+    if journal.is_empty() {
+        println!("No entries yet.");
+    } else {
+        for entry in &journal {
+            println!("{}", entry.name);
+        }
+    }
 }

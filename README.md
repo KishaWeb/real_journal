@@ -24,3 +24,7 @@ shows the journal with the name you put in
 cargo run remove <index> , <index>...
 ``` 
 removes the index you chose (dont chose the name of the journal)
+```bash
+cargo run edit <index> <new descriotion>
+``` 
+edits the requsted index name

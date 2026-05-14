@@ -31,6 +31,11 @@ fn main() {
                 .collect();
             remove_entry(indices, path_to_json);
         }
+        Some("edit") if args.len() == 4 => {
+            let index = args[2].parse::<usize>().expect("Index must be a number");
+            let new_description = &args[3];
+            edit_entry(index, new_description, path_to_json);
+        }
         Some("show") if args.len() == 3 => {
             let name = &args[2];
             read_specific_journal(name, path_to_json);
@@ -123,4 +128,21 @@ fn remove_entry(mut indices: Vec<usize>, path_to_json: &str) {
 
     let updated = serde_json::to_string_pretty(&journal).unwrap();
     fs::write(path_to_json, updated).unwrap();
+}
+
+fn edit_entry(index: usize, new_description: &str, path_to_json: &str) {
+    let mut journal: Vec<Entry> = fs::read_to_string(path_to_json)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+    let idx = index - 1;
+    if idx >= journal.len(){
+        println!("sorry the index doesnt exist")
+    } else{
+        let entry = &mut journal[idx];
+        entry.description = new_description.to_string()
+    }
+    let updated = serde_json::to_string_pretty(&journal).unwrap();
+fs::write(path_to_json, updated).unwrap();
+println!("Updated entry {} to description: '{}'", index, new_description);
 }

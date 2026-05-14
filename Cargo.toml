@@ -7,3 +7,5 @@ edition = "2024"
 serde = {version = "1.0", features = ["derive"]}
 chrono = {version = "0.4", features = ["serde"]}
 serde_json = "1.0"
+bye = "0.1.6"
+hello = "1.0.4"

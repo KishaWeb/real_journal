@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::iter;
 use serde::{Deserialize, Serialize};
 use chrono::Local;
 
@@ -16,6 +15,22 @@ fn main() {
     let path_to_json = "journal.json";
     match args.get(1).map(|s| s.as_str()) {
         Some("list") => print_list(path_to_json),
+        Some("help") if args.len() == 1 => {
+            println!("Usage:");
+            println!("  help:   cargo run help");
+            println!("  Add:   cargo run add <name> <description>");
+            println!("  List:  cargo run list");
+            println!("  Show:  cargo run show <name>");
+            println!("  remove:  cargo run remove <index> , <index>...");
+        }
+        Some("remove") if args.len() >= 3 => {
+            let indices: Vec<usize> = args[2..]
+                .iter()
+                .map(|s| s.parse::<usize>().expect("Index must be a number"))
+                .map(|i| i - 1)
+                .collect();
+            remove_entry(indices, path_to_json);
+        }
         Some("show") if args.len() == 3 => {
             let name = &args[2];
             read_specific_journal(name, path_to_json);
@@ -27,9 +42,11 @@ fn main() {
         }
         _ => {
             eprintln!("Usage:");
+            eprintln!("  help:   cargo run help");
             eprintln!("  Add:   cargo run add <name> <description>");
             eprintln!("  List:  cargo run list");
             eprintln!("  Show:  cargo run show <name>");
+            eprintln!("  remove:  cargo run remove <index> , <index>...");
         }
     }
 }
@@ -85,4 +102,25 @@ fn read_specific_journal(name: &str, path_to_json: &str){
         }
     }
 
+}
+
+fn remove_entry(mut indices: Vec<usize>, path_to_json: &str) {
+    let mut journal: Vec<Entry> = fs::read_to_string(path_to_json)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+
+    indices.sort_unstable_by(|a, b| b.cmp(a));
+
+    for &idx in &indices {
+        if idx < journal.len() {
+            let removed = journal.remove(idx);
+            println!("Removed: {} - {}", removed.name, removed.description);
+        } else {
+            println!("Index {} out of range, skipping.", idx + 1);
+        }
+    }
+
+    let updated = serde_json::to_string_pretty(&journal).unwrap();
+    fs::write(path_to_json, updated).unwrap();
 }

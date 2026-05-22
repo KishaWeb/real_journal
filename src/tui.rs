@@ -29,16 +29,16 @@ pub struct Entry {
 #[derive(PartialEq)]
 enum AppMode {
     Normal,
-    AddingEntry,   // entry creation screen
+    AddingEntry,
+    EditingEntry(usize),
 }
 
 pub struct App {
     pub entries: Vec<Entry>,
     pub list_state: ListState,
     mode: AppMode,
-    // Fields for the new entry
     new_name: String,
-    new_description: TextArea<'static>,  // multi‑line editor
+    new_description: TextArea<'static>,
     new_mood: String,
 }
 
@@ -88,25 +88,69 @@ impl App {
         self.new_mood.clear();
     }
 
-    fn save_entry(&mut self, path: &str) {
+    fn populate_form_from_entry(&mut self, idx: usize) {
+        let entry = &self.entries[idx];
+        self.new_name = entry.name.clone();
+        let mut textarea = TextArea::default();
+        textarea.set_placeholder_text("Write your journal entry here...\n(use arrows, backspace, etc.)");
+        textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+        textarea.clear();
+        textarea.insert_str(&entry.description);
+        self.new_description = textarea;
+        self.new_mood = entry.mood.clone();
+    }
+
+    pub fn start_edit(&mut self) {
+        if let Some(idx) = self.list_state.selected() {
+            self.populate_form_from_entry(idx);
+            self.mode = AppMode::EditingEntry(idx);
+        }
+    }
+
+    fn save_current_entry(&mut self, path: &str) {
         let entry = Entry {
             name: self.new_name.clone(),
             description: self.new_description.lines().join("\n"),
             mood: self.new_mood.clone(),
             time: Local::now().to_string(),
         };
-        self.entries.push(entry);
-        self.list_state.select(Some(self.entries.len() - 1));
+
+        match self.mode {
+            AppMode::AddingEntry => {
+                self.entries.push(entry);
+                self.list_state.select(Some(self.entries.len() - 1));
+            }
+            AppMode::EditingEntry(idx) => {
+                self.entries[idx] = entry;
+                self.list_state.select(Some(idx));
+            }
+            _ => unreachable!(),
+        }
         self.save(path);
+        self.mode = AppMode::Normal;
+        self.reset_entry_form();
     }
 
     fn save(&self, path: &str) {
         let updated = serde_json::to_string_pretty(&self.entries).unwrap();
         fs::write(path, updated).unwrap();
     }
+
+    pub fn remove_entry(&mut self) {
+        if let Some(index) = self.list_state.selected() {
+            self.entries.remove(index);
+            if !self.entries.is_empty() {
+                let new_index = if index == 0 { 0 } else { index - 1 };
+                self.list_state.select(Some(new_index));
+            } else {
+                self.list_state.select(None);
+            }
+            self.save("journal.json");
+        }
+    }
 }
 
-fn draw_main_ui(f: &mut Frame, app: &App) {
+fn draw_main_ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
@@ -123,7 +167,11 @@ fn draw_main_ui(f: &mut Frame, app: &App) {
         Span::styled("q", Style::default().fg(Color::Yellow).bold()),
         Span::raw(" quit  | "),
         Span::styled("a", Style::default().fg(Color::Yellow).bold()),
-        Span::raw(" add entry"),
+        Span::raw(" add entry | "),
+        Span::styled("e", Style::default().fg(Color::Yellow).bold()),
+        Span::raw(" edit entry | "),
+        Span::styled("r/delete", Style::default().fg(Color::Yellow).bold()),
+        Span::raw(" remove entry"),
     ]);
     let help_paragraph = Paragraph::new(help_text).block(Block::default());
     f.render_widget(help_paragraph, chunks[0]);
@@ -146,7 +194,7 @@ fn draw_main_ui(f: &mut Frame, app: &App) {
     let list = List::new(items)
         .block(Block::default().title("Entries").borders(Borders::ALL))
         .highlight_symbol(">> ");
-    f.render_stateful_widget(list, chunks[2], &mut app.list_state.clone());
+    f.render_stateful_widget(list, chunks[2], &mut app.list_state);
 }
 
 fn draw_entry_screen(f: &mut Frame, app: &mut App) {
@@ -154,32 +202,32 @@ fn draw_entry_screen(f: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(1),   // instructions
-            Constraint::Length(3),   // name field
-            Constraint::Min(8),      // description (textarea)
-            Constraint::Length(3),   // mood field
-            Constraint::Length(1),   // help line
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(f.area());
 
-    // Instructions
-    let instruct = Paragraph::new("=== Adding new entry ===").alignment(Alignment::Center);
+    let title = match app.mode {
+        AppMode::AddingEntry => "=== Adding new entry ===",
+        AppMode::EditingEntry(_) => "=== Editing entry ===",
+        _ => "",
+    };
+    let instruct = Paragraph::new(title).alignment(Alignment::Center);
     f.render_widget(instruct, chunks[0]);
 
-    // Name field
     let name_text = format!("Name: {}", app.new_name);
     let name_para = Paragraph::new(name_text).block(Block::default().borders(Borders::NONE));
     f.render_widget(name_para, chunks[1]);
 
-    // Description (TextArea) – handles wrapping + scrolling automatically
     f.render_widget(&app.new_description, chunks[2]);
 
-    // Mood field
     let mood_text = format!("Mood: {}", app.new_mood);
     let mood_para = Paragraph::new(mood_text).block(Block::default().borders(Borders::NONE));
     f.render_widget(mood_para, chunks[3]);
 
-    // Help line
     let help = Paragraph::new("Enter: finish & save | Esc: cancel | Tab: switch fields")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
@@ -189,7 +237,7 @@ fn draw_entry_screen(f: &mut Frame, app: &mut App) {
 pub fn tui(f: &mut Frame, app: &mut App) {
     match app.mode {
         AppMode::Normal => draw_main_ui(f, app),
-        AppMode::AddingEntry => draw_entry_screen(f, app),
+        AppMode::AddingEntry | AppMode::EditingEntry(_) => draw_entry_screen(f, app),
     }
 }
 
@@ -208,7 +256,6 @@ pub fn run() {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    // We'll manage focus manually (simple)
     enum Field { Name, Description, Mood }
     let mut focus = Field::Name;
 
@@ -226,26 +273,32 @@ pub fn run() {
                                 app.mode = AppMode::AddingEntry;
                                 focus = Field::Name;
                             }
+                            KeyCode::Char('e') => {
+                                app.start_edit();
+                                focus = Field::Name;
+                            }
                             KeyCode::Down => app.next(),
                             KeyCode::Up => app.previous(),
+                            KeyCode::Delete => app.remove_entry(),
+                            KeyCode::Char('r') => app.remove_entry(),
                             _ => {}
                         },
-                        AppMode::AddingEntry => match key.code {
+                        AppMode::AddingEntry | AppMode::EditingEntry(_) => match key.code {
                             KeyCode::Esc => {
                                 app.mode = AppMode::Normal;
                             }
                             KeyCode::Enter => {
-                                // Save if all fields non‑empty
                                 if !app.new_name.is_empty()
                                     && !app.new_description.lines().join("\n").is_empty()
                                     && !app.new_mood.is_empty()
                                 {
-                                    app.save_entry(path);
-                                    app.mode = AppMode::Normal;
+                                    app.save_current_entry(path);
+                                    if let AppMode::EditingEntry(_) = app.mode {
+                                        break;
+                                    }
                                 }
                             }
                             KeyCode::Tab => {
-                                // Cycle focus
                                 focus = match focus {
                                     Field::Name => Field::Description,
                                     Field::Description => Field::Mood,
@@ -253,7 +306,6 @@ pub fn run() {
                                 };
                             }
                             _ => {
-                                // Handle input based on current focus
                                 match focus {
                                     Field::Name => match key.code {
                                         KeyCode::Char(c) => app.new_name.push(c),
@@ -261,7 +313,103 @@ pub fn run() {
                                         _ => {}
                                     },
                                     Field::Description => {
-                                        // Let TextArea handle the event
+                                        app.new_description.input(Input::from(key));
+                                    }
+                                    Field::Mood => match key.code {
+                                        KeyCode::Char(c) => app.new_mood.push(c),
+                                        KeyCode::Backspace => { app.new_mood.pop(); }
+                                        _ => {}
+                                    },
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    disable_raw_mode().unwrap();
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).unwrap();
+    terminal.show_cursor().unwrap();
+}
+
+pub fn run_edit_entry(entry_index: usize, path: &str) {
+    let entries: Vec<Entry> = fs::read_to_string(path)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+
+    let mut app = App::new(entries);
+    if entry_index < app.entries.len() {
+        app.list_state.select(Some(entry_index));
+        app.start_edit();
+    } else {
+        eprintln!("Index out of range");
+        return;
+    }
+
+    enable_raw_mode().unwrap();
+    let mut stdout = stdout();
+    execute!(stdout, EnterAlternateScreen).unwrap();
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    enum Field { Name, Description, Mood }
+    let mut focus = Field::Name;
+
+    loop {
+        terminal.draw(|f| tui(f, &mut app)).unwrap();
+
+        if event::poll(Duration::from_millis(100)).unwrap() {
+            if let Event::Key(key) = event::read().unwrap() {
+                if key.kind == KeyEventKind::Press {
+                    match app.mode {
+                        AppMode::Normal => match key.code {
+                            KeyCode::Char('q') => break,
+                            KeyCode::Char('a') => {
+                                app.reset_entry_form();
+                                app.mode = AppMode::AddingEntry;
+                                focus = Field::Name;
+                            }
+                            KeyCode::Char('e') => {
+                                app.start_edit();
+                                focus = Field::Name;
+                            }
+                            KeyCode::Down => app.next(),
+                            KeyCode::Up => app.previous(),
+                            KeyCode::Delete => app.remove_entry(),
+                            KeyCode::Char('r') => app.remove_entry(),
+                            _ => {}
+                        },
+                        AppMode::AddingEntry | AppMode::EditingEntry(_) => match key.code {
+                            KeyCode::Esc => {
+                                app.mode = AppMode::Normal;
+                            }
+                            KeyCode::Enter => {
+                                if !app.new_name.is_empty()
+                                    && !app.new_description.lines().join("\n").is_empty()
+                                    && !app.new_mood.is_empty()
+                                {
+                                    app.save_current_entry(path);
+                                    break;
+                                }
+                            }
+                            KeyCode::Tab => {
+                                focus = match focus {
+                                    Field::Name => Field::Description,
+                                    Field::Description => Field::Mood,
+                                    Field::Mood => Field::Name,
+                                };
+                            }
+                            _ => {
+                                match focus {
+                                    Field::Name => match key.code {
+                                        KeyCode::Char(c) => app.new_name.push(c),
+                                        KeyCode::Backspace => { app.new_name.pop(); }
+                                        _ => {}
+                                    },
+                                    Field::Description => {
                                         app.new_description.input(Input::from(key));
                                     }
                                     Field::Mood => match key.code {

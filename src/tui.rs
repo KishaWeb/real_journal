@@ -1,6 +1,6 @@
 use chrono::Local;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -8,7 +8,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
@@ -31,6 +31,7 @@ enum AppMode {
     Normal,
     AddingEntry,
     EditingEntry(usize),
+    ViewingEntry(usize),
 }
 
 pub struct App {
@@ -40,6 +41,7 @@ pub struct App {
     new_name: String,
     new_description: TextArea<'static>,
     new_mood: String,
+    view_offset: u16,
 }
 
 impl App {
@@ -59,6 +61,7 @@ impl App {
             new_name: String::new(),
             new_description: textarea,
             new_mood: String::new(),
+            view_offset: 0,
         }
     }
 
@@ -86,6 +89,7 @@ impl App {
         self.new_description.set_placeholder_text("Write your journal entry here...\n(use arrows, backspace, etc.)");
         self.new_description.set_wrap_mode(WrapMode::WordOrGlyph);
         self.new_mood.clear();
+        self.view_offset = 0;
     }
 
     fn populate_form_from_entry(&mut self, idx: usize) {
@@ -98,12 +102,37 @@ impl App {
         textarea.insert_str(&entry.description);
         self.new_description = textarea;
         self.new_mood = entry.mood.clone();
+        self.view_offset = 0;
     }
 
     pub fn start_edit(&mut self) {
         if let Some(idx) = self.list_state.selected() {
             self.populate_form_from_entry(idx);
             self.mode = AppMode::EditingEntry(idx);
+        }
+    }
+
+    pub fn start_view(&mut self) {
+        if let Some(idx) = self.list_state.selected() {
+            self.view_offset = 0;
+            self.mode = AppMode::ViewingEntry(idx);
+        }
+    }
+
+    pub fn scroll_view(&mut self, delta: i16) {
+        let selected = match self.mode {
+            AppMode::ViewingEntry(idx) => idx,
+            _ => return,
+        };
+        let entry = &self.entries[selected];
+        let height = entry.description.lines().count() as i16;
+        if delta < 0 {
+            let offset = self.view_offset as i16 + delta;
+            self.view_offset = offset.max(0) as u16;
+        } else {
+            let max_offset = height.saturating_sub(1);
+            let offset = self.view_offset as i16 + delta;
+            self.view_offset = offset.min(max_offset) as u16;
         }
     }
 
@@ -148,6 +177,14 @@ impl App {
             self.save("journal.json");
         }
     }
+
+    fn reading_entry(&self) -> Option<&Entry> {
+        if let Some(idx) = self.list_state.selected() {
+            self.entries.get(idx)
+        } else {
+            None
+        }
+    }
 }
 
 fn draw_main_ui(f: &mut Frame, app: &mut App) {
@@ -164,6 +201,8 @@ fn draw_main_ui(f: &mut Frame, app: &mut App) {
     let help_text = Line::from(vec![
         Span::styled("↑/↓", Style::default().fg(Color::Yellow).bold()),
         Span::raw(" navigate  | "),
+        Span::styled("Enter/v", Style::default().fg(Color::Yellow).bold()),
+        Span::raw(" view  | "),
         Span::styled("q", Style::default().fg(Color::Yellow).bold()),
         Span::raw(" quit  | "),
         Span::styled("a", Style::default().fg(Color::Yellow).bold()),
@@ -228,16 +267,52 @@ fn draw_entry_screen(f: &mut Frame, app: &mut App) {
     let mood_para = Paragraph::new(mood_text).block(Block::default().borders(Borders::NONE));
     f.render_widget(mood_para, chunks[3]);
 
-    let help = Paragraph::new("Enter: finish & save | Esc: cancel | Tab: switch fields")
+    let help = Paragraph::new("Enter: finish & save | Esc: cancel | Tab: switch fields | Ctrl+J: new line")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
     f.render_widget(help, chunks[4]);
+}
+
+fn draw_view_screen(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(2)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(2),
+        ])
+        .split(f.area());
+
+    if let Some(entry) = app.reading_entry() {
+        let title = format!("=== Viewing entry ===");
+        let title_para = Paragraph::new(title).alignment(Alignment::Center);
+        f.render_widget(title_para, chunks[0]);
+
+        let metadata = format!("Name: {}  |  Mood: {}  |  Time: {}", entry.name, entry.mood, entry.time);
+        let meta_para = Paragraph::new(metadata)
+            .block(Block::default().borders(Borders::ALL).title("Entry info"));
+        f.render_widget(meta_para, chunks[1]);
+
+        let description = Text::from(entry.description.clone());
+        let description_para = Paragraph::new(description)
+            .block(Block::default().borders(Borders::ALL).title("Description"))
+            .scroll((app.view_offset, 0));
+        f.render_widget(description_para, chunks[2]);
+
+        let help = Paragraph::new("↑/↓ scroll  |  Esc back  |  q quit")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        f.render_widget(help, chunks[3]);
+    }
 }
 
 pub fn tui(f: &mut Frame, app: &mut App) {
     match app.mode {
         AppMode::Normal => draw_main_ui(f, app),
         AppMode::AddingEntry | AppMode::EditingEntry(_) => draw_entry_screen(f, app),
+        AppMode::ViewingEntry(_) => draw_view_screen(f, app),
     }
 }
 
@@ -256,6 +331,7 @@ pub fn run() {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
+    #[derive(PartialEq)]
     enum Field { Name, Description, Mood }
     let mut focus = Field::Name;
 
@@ -277,15 +353,30 @@ pub fn run() {
                                 app.start_edit();
                                 focus = Field::Name;
                             }
+                            KeyCode::Char('v') | KeyCode::Enter => {
+                                app.start_view();
+                            }
                             KeyCode::Down => app.next(),
                             KeyCode::Up => app.previous(),
                             KeyCode::Delete => app.remove_entry(),
                             KeyCode::Char('r') => app.remove_entry(),
                             _ => {}
                         },
+                        AppMode::ViewingEntry(_) => match key.code {
+                            KeyCode::Esc => {
+                                app.mode = AppMode::Normal;
+                            }
+                            KeyCode::Char('q') => break,
+                            KeyCode::Down => app.scroll_view(1),
+                            KeyCode::Up => app.scroll_view(-1),
+                            _ => {}
+                        },
                         AppMode::AddingEntry | AppMode::EditingEntry(_) => match key.code {
                             KeyCode::Esc => {
                                 app.mode = AppMode::Normal;
+                            }
+                            KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) && focus == Field::Description => {
+                                app.new_description.insert_str("\n");
                             }
                             KeyCode::Enter => {
                                 if !app.new_name.is_empty()
@@ -355,6 +446,7 @@ pub fn run_edit_entry(entry_index: usize, path: &str) {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).unwrap();
 
+    #[derive(PartialEq)]
     enum Field { Name, Description, Mood }
     let mut focus = Field::Name;
 
@@ -376,15 +468,30 @@ pub fn run_edit_entry(entry_index: usize, path: &str) {
                                 app.start_edit();
                                 focus = Field::Name;
                             }
+                            KeyCode::Char('v') | KeyCode::Enter => {
+                                app.start_view();
+                            }
                             KeyCode::Down => app.next(),
                             KeyCode::Up => app.previous(),
                             KeyCode::Delete => app.remove_entry(),
                             KeyCode::Char('r') => app.remove_entry(),
                             _ => {}
                         },
+                        AppMode::ViewingEntry(_) => match key.code {
+                            KeyCode::Esc => {
+                                app.mode = AppMode::Normal;
+                            }
+                            KeyCode::Char('q') => break,
+                            KeyCode::Down => app.scroll_view(1),
+                            KeyCode::Up => app.scroll_view(-1),
+                            _ => {}
+                        },
                         AppMode::AddingEntry | AppMode::EditingEntry(_) => match key.code {
                             KeyCode::Esc => {
                                 app.mode = AppMode::Normal;
+                            }
+                            KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) && focus == Field::Description => {
+                                app.new_description.insert_str("\n");
                             }
                             KeyCode::Enter => {
                                 if !app.new_name.is_empty()

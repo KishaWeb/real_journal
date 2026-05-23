@@ -1,30 +1,54 @@
 ## journal
 
-ok so i made this journal cli for learnign rust cause i dont have any project ideas and i thought there is so many journal cli and it turned out i was right BUT alot of those journal were basic and quick with no tui i said ill make one with tui and quick commands so yeh i started making it, now so far im almost finished with quick command i lowky started coding since 4pm then took a lil break at 8:30 till 11 including a shower then cod'ed till 3:30 am now im going to watch a movie
+real journal is a actual journal cli with tui not like those other cli's, i made this for learning rust, and i did my best so far in this project.
 
+## installation
+
+### Prerequisites
+- [Rust and Cargo](https://rustup.rs/) (installs `cargo` and `rustc`)
+
+### how to install
+```bash
+git clone https://github.com/KishaWeb/real_journal.git
+cd real_journal
+cargo install --path .
+```
 ## usage
 ok i hadnt so far made it a full cli you still have to run it in cargo so here are the commands:
 ```bash
-cargo run help
+journal help
 ``` 
 this shows the usage and commands
 ```bash
-Add:   cargo run add <name> <description> <mood> or cargo run add (this would open a tui to add a journal)
+journal add <name> <description> <mood> or journal add (this would open a tui to add a journal)
 ``` 
 adds a journal (including the time it was made thats on your system)
 ```bash
-cargo run list
+journal list
 ``` 
 shows the list of journals with their index's
 ```bash
-cargo run show <name>
+journal show <name>
 ``` 
 shows the journal with the name you put in
 ```bash
-cargo run remove <index> , <index>...
+journal remove <index> , <index>...
 ``` 
 removes the index you chose (dont chose the name of the journal)
 ```bash
-cargo run edit <index> <new descriotion>
+journal edit <index>
 ``` 
-edits the requsted index name
+edits the requsted index
+
+```bash
+journal tui
+``` 
+opens the tui
+
+## showcase
+### tui:
+
+![tui](assets/tui.gif)
+### quick journal:
+
+![quick journal](assets/quick_journal.gif)

@@ -432,9 +432,15 @@ pub fn run_edit_entry(entry_index: usize, path: &str) {
         .unwrap_or_default();
 
     let mut app = App::new(entries);
-    if entry_index < app.entries.len() {
-        app.list_state.select(Some(entry_index));
-        app.start_edit();
+    if entry_index <= app.entries.len() {
+        if entry_index == app.entries.len() {
+            app.reset_entry_form();
+            app.mode = AppMode::AddingEntry;
+            app.list_state.select(None);
+        } else {
+            app.list_state.select(Some(entry_index));
+            app.start_edit();
+        }
     } else {
         eprintln!("Index out of range");
         return;

@@ -19,7 +19,7 @@ pub fn run() {
         Some("help") if args.len() == 2 => {
             println!("Usage:");
             println!("  help:   cargo run help");
-            println!("  Add:   cargo run add <name> <description> <mood>");
+            println!("  Add:   cargo run add <name> <description> <mood> or cargo run add (this would open a tui to add a journal)");
             println!("  List:  cargo run list");
             println!("  Show:  cargo run show <name>");
             println!("  remove:  cargo run remove <index> , <index>...");
@@ -47,11 +47,15 @@ pub fn run() {
             let description = &args[3];
             let mood = &args[4];
             add_journal(name, description, path_to_json, mood);
+            
+        }
+        Some("add") if args.len() == 2 => {
+            new(path_to_json);
         }
         _ => {
             eprintln!("Usage:");
             eprintln!("  help:   cargo run help");
-            eprintln!("  Add:   cargo run add <name> <description> <mood>");
+            eprintln!("  Add:   cargo run add <name> <description> <mood> or cargo run add (this would open a tui to add a journal)");
             eprintln!("  List:  cargo run list");
             eprintln!("  Show:  cargo run show <name>");
             eprintln!("  remove:  cargo run remove <index> , <index>...");
@@ -137,4 +141,15 @@ fn remove_entry(mut indices: Vec<usize>, path_to_json: &str) {
 
 fn edit_entry(index: usize, path_to_json: &str) {
     tui::run_edit_entry(index - 1, path_to_json);
+}
+
+fn new(path_to_json: &str) {
+    // Create a new entry with an index that doesn't exist yet
+    let journal: Vec<Entry> = fs::read_to_string(path_to_json)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default();
+    
+    let new_index = journal.len();
+    tui::run_edit_entry(new_index, path_to_json);
 }

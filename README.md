@@ -9,7 +9,7 @@ cargo run help
 ``` 
 this shows the usage and commands
 ```bash
-cargo run add <name> <description> <mood>
+Add:   cargo run add <name> <description> <mood> or cargo run add (this would open a tui to add a journal)
 ``` 
 adds a journal (including the time it was made thats on your system)
 ```bash
